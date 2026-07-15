@@ -17,5 +17,8 @@ __pycache__/
 .env
 .env.*
 
+# Local notes (kept locally, not pushed)
+CLAUDE.md
+
 # OS
 .DS_Store
