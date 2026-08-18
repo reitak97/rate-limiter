@@ -139,7 +139,11 @@ async def rate_limit_middleware(request: Request, call_next):
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded"},
-            headers={"Retry-After": "1"},
+            headers={
+                "Retry-After": "1",
+                "X-RateLimit-Limit": str(CAPACITY),
+                "X-RateLimit-Remaining": "0",
+            },
         )
     # A token was available, so hand the request to the matching route handler.
     response = await call_next(request)

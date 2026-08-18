@@ -1,7 +1,9 @@
 # Covers the configuration switches. These are read at import time, so each test
 # reloads the module with a different environment rather than mutating a live app.
+import asyncio
 import importlib
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 import redis
@@ -55,3 +57,33 @@ def test_zero_refill_allows_exactly_capacity(monkeypatch):
         statuses = [client.post("/generate", json={"text": "hi"}).status_code
                     for _ in range(6)]
     assert statuses == [200, 200, 200, 429, 429, 429]
+
+
+# spend_token_naive is exercised only by bench_race.py, a script nothing runs
+# automatically. Without this, a refactor could silently fix or break its race
+# and every test would still pass — the naive-vs-lua benchmark would quietly
+# become lua-vs-lua. Firing requests one at a time (like the test above) can't
+# reproduce it: the race needs two requests' HGET/HSET to interleave, which
+# requires them in flight at once, not sequenced.
+def test_naive_algo_oversells_under_concurrent_load(monkeypatch):
+    capacity = 5
+    module = load(
+        monkeypatch,
+        RATELIMIT_ALGO="naive",
+        RATELIMIT_CAPACITY=str(capacity),
+        RATELIMIT_REFILL_RATE="0",
+    )
+
+    async def burst():
+        # TestClient's own request loop is synchronous; only a real async
+        # client sending requests concurrently can trigger the interleave.
+        async with module.app.router.lifespan_context(module.app):
+            transport = httpx.ASGITransport(app=module.app, client=("testclient", 50000))
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+                return await asyncio.gather(
+                    *[ac.post("/generate", json={"text": "hi"}) for _ in range(50)]
+                )
+
+    responses = asyncio.run(burst())
+    allowed = sum(1 for r in responses if r.status_code == 200)
+    assert allowed > capacity

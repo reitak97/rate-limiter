@@ -1,7 +1,7 @@
 # TestClient sends requests to FastAPI without starting a real HTTP server.
 from fastapi.testclient import TestClient
 # Import the same FastAPI application that production runs.
-from app.main import app
+from app.main import app, CAPACITY
 # pytest provides fixtures; redis is used to reset test data before each test.
 import pytest, redis
 
@@ -37,6 +37,9 @@ def test_generate_success(client):
     assert response.status_code == 200
     # The middleware should expose the post-request token balance in this header.
     assert "X-RateLimit-Remaining" in response.headers
+
+    # It should report the configured capacity, not just be present.
+    assert response.headers["X-RateLimit-Limit"] == str(CAPACITY)
     # Convert the string HTTP header to a number and ensure it is a valid balance.
     assert int(response.headers["X-RateLimit-Remaining"]) >= 0
 
@@ -49,6 +52,9 @@ def test_rate_limit_exceeded(client):
     response = client.post("/generate", json={"text": "hello"})
     # HTTP 429 is the standard response for a rate-limited request.
     assert response.status_code == 429
-    # The middleware should also tell the client when it may safely retry.
-    assert "Retry-After" in response.headers
+    # The middleware should also tell the client when it may safely retry, and
+    # give it the same rate-limit context a successful response would.
+    assert response.headers["Retry-After"] == "1"
+    assert response.headers["X-RateLimit-Limit"] == str(CAPACITY)
+    assert response.headers["X-RateLimit-Remaining"] == "0"
 
