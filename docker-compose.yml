@@ -1,18 +1,31 @@
 services:
 
-  environment:
-    REDIS_HOST: redis
+
   app:
+    environment:
+      # The app needs to know how to reach Redis. This is the hostname of the
+      # redis service on compose's internal network.
+      REDIS_HOST: redis
+    # Build from the Dockerfile in this directory rather than pulling an image.
     build: .
+    # host:container — exposes the app on localhost:8000 on your machine.
     ports:
       - "8000:8000"
     depends_on:
       redis:
+        # Wait for Redis to pass its healthcheck (not just "container started")
+        # before starting app — otherwise the app could boot and try to
+        # connect before Redis is actually accepting connections.
         condition: service_healthy
   redis:
     image: redis:7-alpine
+    # Exposes Redis on the host too (localhost:6379), useful for poking at it
+    # with redis-cli while developing. Containers reach it via the service
+    # name `redis` on compose's internal network regardless of this mapping.
     ports:
       - "6379:6379"
+    # Compose polls this on an interval; `depends_on: condition:
+    # service_healthy` above blocks on it reporting healthy.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
