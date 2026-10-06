@@ -21,21 +21,7 @@ mid-burst. Reproduce with `./bench_race.sh`, which runs both implementations via
 `RATELIMIT_ALGO=naive|lua`; the script reports the burst rate it actually
 achieved so a slow machine cannot quietly test less than it claims.
 
-1,500 simultaneous requests against a bucket of capacity 50, 5 trials each,
-burst delivered at a measured 2,948 rps (naive) and 5,609 rps (lua):
 
-| Implementation | Requests allowed | Oversell | Per-trial |
-| --- | --- | --- | --- |
-| Naive `HGET` then `HSET` | 1500 | +1450 (**+2900%**) | 1450, 1450, 1450, 1450, 1450 |
-| Atomic Lua script | 50 | **0%** | 0, 0, 0, 0, 0 |
-
-The naive oversell is not a narrow race window that occasionally loses. Every
-request reads a balance of roughly 50 and writes back roughly 49, and the last
-write wins, so the counter never actually descends — the bucket is never
-observed empty and every request in the burst is allowed. Oversell therefore
-scales with offered load rather than being bounded by anything, which is what
-makes the read-then-write version unfixable by retrying or by shrinking the gap
-between the two calls.
 
 `RATELIMIT_ALGO=naive` exists only to make this measurable and must never be
 set in production.
